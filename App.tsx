@@ -1,84 +1,157 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppMode, Habit, Task } from './types';
 import { DailyTracker } from './components/DailyTracker';
 import { TaskBoard } from './components/TaskBoard';
-import { LayoutGrid, KanbanSquare, Terminal } from 'lucide-react';
-import { cn } from './components/ui';
+import { LayoutGrid, KanbanSquare, Terminal, User, LogOut, Check, Lock, Mail, AlertCircle } from 'lucide-react';
+import { cn, Modal, Input, Button } from './components/ui';
+
+// Default Data Generators
+const getDefaultHabits = (): Habit[] => [
+  { id: '1', title: 'Deep Work (4h)', completions: {} },
+  { id: '2', title: 'Physical Training', completions: {} },
+  { id: '3', title: 'Zero Sugar', completions: {} }
+];
+
+const getDefaultMonthlyHabits = (): Habit[] => [
+  { id: 'm1', title: 'Financial Audit', completions: {} },
+  { id: 'm2', title: 'Network Review', completions: {} }
+];
+
+const getDefaultCategories = (): string[] => ['Complete It', 'Monthly', 'Yearly'];
+
+const getDefaultTasks = (): Task[] => [
+  { id: 't1', title: 'Deploy Production Build', column: 'Complete It', completed: false, priority: 'HIGH', createdAt: Date.now() },
+  { id: 't2', title: 'Q3 Financial Review', column: 'Monthly', completed: false, priority: 'MEDIUM', createdAt: Date.now() },
+  { id: 't3', title: 'Launch Mobile App', column: 'Yearly', completed: false, priority: 'HIGH', createdAt: Date.now() }
+];
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>(AppMode.PROTOCOL);
+  const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('doit_current_user'));
+  const [isLoading, setIsLoading] = useState(false);
   
-  // Initialize Daily Habits state
-  const [habits, setHabits] = useState<Habit[]>(() => {
-    try {
-      const saved = localStorage.getItem('doit_habits');
-      return saved ? JSON.parse(saved) : [
-        { id: '1', title: 'Deep Work (4h)', completions: {} },
-        { id: '2', title: 'Physical Training', completions: {} },
-        { id: '3', title: 'Zero Sugar', completions: {} }
-      ];
-    } catch (e) {
-      return [];
-    }
-  });
+  // Auth Modal State
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'SIGN_IN' | 'SIGN_UP'>('SIGN_IN');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authError, setAuthError] = useState('');
 
-  // Initialize Monthly Habits state
-  const [monthlyHabits, setMonthlyHabits] = useState<Habit[]>(() => {
-    try {
-      const saved = localStorage.getItem('doit_monthly_habits');
-      return saved ? JSON.parse(saved) : [
-        { id: 'm1', title: 'Financial Audit', completions: {} },
-        { id: 'm2', title: 'Network Review', completions: {} }
-      ];
-    } catch (e) {
-      return [];
-    }
-  });
+  // Data State
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [monthlyHabits, setMonthlyHabits] = useState<Habit[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
 
-  // Initialize Categories state
-  const [categories, setCategories] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('doit_categories');
-      return saved ? JSON.parse(saved) : ['Complete It', 'Monthly', 'Yearly'];
-    } catch (e) {
-      return ['Complete It', 'Monthly', 'Yearly'];
-    }
-  });
+  // Helper to get storage keys based on user
+  const getStorageKey = (key: string) => currentUser ? `${key}_${currentUser}` : key;
 
-  // Initialize Tasks state
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    try {
-      const saved = localStorage.getItem('doit_tasks');
-      return saved ? JSON.parse(saved) : [
-        { id: 't1', title: 'Deploy Production Build', column: 'Complete It', completed: false, priority: 'HIGH', createdAt: Date.now() },
-        { id: 't2', title: 'Q3 Financial Review', column: 'Monthly', completed: false, priority: 'MEDIUM', createdAt: Date.now() },
-        { id: 't3', title: 'Launch Mobile App', column: 'Yearly', completed: false, priority: 'HIGH', createdAt: Date.now() }
-      ];
-    } catch (e) {
-      return [];
-    }
-  });
-
-  // Persist Habits
+  // Load Data Effect
   useEffect(() => {
-    localStorage.setItem('doit_habits', JSON.stringify(habits));
-  }, [habits]);
+    setIsLoading(true);
+    
+    // Slight delay to ensure state doesn't clash during switch, 
+    // and to prevent persistence effects from running with wrong data
+    const loadData = () => {
+      try {
+        const h = localStorage.getItem(getStorageKey('doit_habits'));
+        setHabits(h ? JSON.parse(h) : getDefaultHabits());
 
-  // Persist Monthly Habits
-  useEffect(() => {
-    localStorage.setItem('doit_monthly_habits', JSON.stringify(monthlyHabits));
-  }, [monthlyHabits]);
+        const mh = localStorage.getItem(getStorageKey('doit_monthly_habits'));
+        setMonthlyHabits(mh ? JSON.parse(mh) : getDefaultMonthlyHabits());
 
-  // Persist Categories
-  useEffect(() => {
-    localStorage.setItem('doit_categories', JSON.stringify(categories));
-  }, [categories]);
+        const c = localStorage.getItem(getStorageKey('doit_categories'));
+        setCategories(c ? JSON.parse(c) : getDefaultCategories());
 
-  // Persist Tasks
+        const t = localStorage.getItem(getStorageKey('doit_tasks'));
+        setTasks(t ? JSON.parse(t) : getDefaultTasks());
+      } catch (e) {
+        console.error("Failed to load data", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, [currentUser]);
+
+  // Persist Data Effects (Only if not loading)
   useEffect(() => {
-    localStorage.setItem('doit_tasks', JSON.stringify(tasks));
-  }, [tasks]);
+    if (!isLoading) localStorage.setItem(getStorageKey('doit_habits'), JSON.stringify(habits));
+  }, [habits, currentUser, isLoading]);
+
+  useEffect(() => {
+    if (!isLoading) localStorage.setItem(getStorageKey('doit_monthly_habits'), JSON.stringify(monthlyHabits));
+  }, [monthlyHabits, currentUser, isLoading]);
+
+  useEffect(() => {
+    if (!isLoading) localStorage.setItem(getStorageKey('doit_categories'), JSON.stringify(categories));
+  }, [categories, currentUser, isLoading]);
+
+  useEffect(() => {
+    if (!isLoading) localStorage.setItem(getStorageKey('doit_tasks'), JSON.stringify(tasks));
+  }, [tasks, currentUser, isLoading]);
+
+  // Persist Current User
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('doit_current_user', currentUser);
+    } else {
+      localStorage.removeItem('doit_current_user');
+    }
+  }, [currentUser]);
+
+  const handleAuth = () => {
+    setAuthError('');
+    const email = emailInput.trim();
+    const password = passwordInput.trim();
+
+    if (!email || !password) {
+      setAuthError('Email and password are required.');
+      return;
+    }
+
+    // Mock Database using LocalStorage
+    const users = JSON.parse(localStorage.getItem('doit_users') || '{}');
+
+    if (authMode === 'SIGN_UP') {
+      if (users[email]) {
+        setAuthError('User already exists. Please sign in.');
+        return;
+      }
+      // Register User
+      users[email] = { password }; // In a real app, hash this!
+      localStorage.setItem('doit_users', JSON.stringify(users));
+      
+      setCurrentUser(email);
+      setIsAuthModalOpen(false);
+      resetAuthForm();
+    } else {
+      // Sign In
+      const user = users[email];
+      if (!user || user.password !== password) {
+        setAuthError('Invalid email or password.');
+        return;
+      }
+      setCurrentUser(email);
+      setIsAuthModalOpen(false);
+      resetAuthForm();
+    }
+  };
+
+  const resetAuthForm = () => {
+    setEmailInput('');
+    setPasswordInput('');
+    setAuthError('');
+    setAuthMode('SIGN_IN');
+  };
+
+  const handleSignOut = () => {
+    setCurrentUser(null);
+    setIsAuthModalOpen(false);
+    resetAuthForm();
+  };
 
   const addCategory = (name: string) => {
     if (name && !categories.includes(name)) {
@@ -103,15 +176,47 @@ export default function App() {
     setTasks(prev => prev.filter(t => t.column !== name));
   };
 
+  // Helper for user initials
+  const getUserInitials = (name: string) => name.substring(0, 2).toUpperCase();
+
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 selection:bg-blue-500/30 selection:text-white flex flex-col md:flex-row overflow-hidden font-sans">
       
       {/* Sidebar Navigation */}
       <nav className="w-full md:w-20 bg-slate-950 border-b md:border-b-0 md:border-r border-blue-900/30 flex md:flex-col items-center justify-between md:justify-start py-2 md:py-6 px-4 md:px-0 z-50 shrink-0">
-        <div className="mb-0 md:mb-8 text-blue-500">
-           <Terminal size={32} strokeWidth={1.5} />
+        
+        {/* Top Section: User & Logo */}
+        <div className="flex md:flex-col items-center gap-4 md:gap-6 md:mb-8">
+             {/* Logo & User Container - Row on Mobile, Stack on Desktop */}
+            <div className="flex items-center md:flex-col-reverse gap-4">
+                 {/* User Icon - Left of Logo (or below/above depending on vertical stacking preference) */}
+                <button 
+                    onClick={() => {
+                        setIsAuthModalOpen(true);
+                        resetAuthForm();
+                    }}
+                    className="group relative flex items-center justify-center order-1 md:order-2"
+                    title={currentUser ? `Signed in as ${currentUser}` : "Sign In"}
+                >
+                    {currentUser ? (
+                        <div className="w-8 h-8 rounded-full bg-blue-900/50 border border-blue-500/50 flex items-center justify-center text-[10px] font-bold tracking-tighter text-blue-200 group-hover:border-blue-400 group-hover:bg-blue-800 transition-colors">
+                            {getUserInitials(currentUser)}
+                        </div>
+                    ) : (
+                        <div className="p-1.5 text-slate-500 hover:text-blue-400 transition-colors">
+                            <User size={20} strokeWidth={1.5} />
+                        </div>
+                    )}
+                </button>
+
+                {/* Logo */}
+                <div className="text-blue-500 order-2 md:order-1">
+                   <Terminal size={32} strokeWidth={1.5} />
+                </div>
+            </div>
         </div>
         
+        {/* Navigation Items */}
         <div className="flex md:flex-col gap-2 md:gap-6">
           <button 
             onClick={() => setMode(AppMode.PROTOCOL)}
@@ -142,6 +247,7 @@ export default function App() {
           </button>
         </div>
         
+        {/* Desktop Bottom Decoration */}
         <div className="hidden md:block mt-auto pb-4">
            <div className="w-8 h-px bg-blue-900/30 mx-auto" />
         </div>
@@ -157,26 +263,120 @@ export default function App() {
              }} 
         />
         
-        <div className="relative z-10 h-full max-w-7xl mx-auto">
-          {mode === AppMode.PROTOCOL ? (
-            <DailyTracker 
-              dailyHabits={habits} 
-              setDailyHabits={setHabits} 
-              monthlyHabits={monthlyHabits}
-              setMonthlyHabits={setMonthlyHabits}
-            />
-          ) : (
-            <TaskBoard 
-              tasks={tasks} 
-              setTasks={setTasks}
-              categories={categories}
-              onAddCategory={addCategory}
-              onUpdateCategory={updateCategory}
-              onDeleteCategory={deleteCategory}
-            />
-          )}
-        </div>
+        {isLoading ? (
+            <div className="relative z-10 h-full flex items-center justify-center">
+                <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+            </div>
+        ) : (
+            <div className="relative z-10 h-full max-w-7xl mx-auto">
+              {mode === AppMode.PROTOCOL ? (
+                <DailyTracker 
+                  dailyHabits={habits} 
+                  setDailyHabits={setHabits} 
+                  monthlyHabits={monthlyHabits}
+                  setMonthlyHabits={setMonthlyHabits}
+                />
+              ) : (
+                <TaskBoard 
+                  tasks={tasks} 
+                  setTasks={setTasks}
+                  categories={categories}
+                  onAddCategory={addCategory}
+                  onUpdateCategory={updateCategory}
+                  onDeleteCategory={deleteCategory}
+                />
+              )}
+            </div>
+        )}
       </main>
+
+      {/* Auth Modal */}
+      <Modal
+        isOpen={isAuthModalOpen}
+        onClose={() => {
+            setIsAuthModalOpen(false);
+            resetAuthForm();
+        }}
+        title={currentUser ? "USER PROFILE" : (authMode === 'SIGN_IN' ? "SYSTEM ACCESS" : "NEW REGISTRATION")}
+      >
+        <div className="flex flex-col gap-6">
+            {currentUser ? (
+                <div className="flex flex-col gap-6">
+                    <div className="flex items-center gap-4 bg-slate-900/50 p-4 border border-blue-900/20">
+                        <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-lg font-bold text-white shadow-lg shadow-blue-900/50">
+                            {getUserInitials(currentUser)}
+                        </div>
+                        <div className="overflow-hidden">
+                            <p className="text-xs text-slate-500 font-mono uppercase">Current User</p>
+                            <p className="text-sm md:text-lg font-bold text-white truncate" title={currentUser}>{currentUser}</p>
+                        </div>
+                    </div>
+                    <Button onClick={handleSignOut} variant="danger" className="w-full flex items-center justify-center gap-2">
+                        <LogOut size={16} /> SIGN OUT
+                    </Button>
+                </div>
+            ) : (
+                <div className="flex flex-col gap-4">
+                    <p className="text-sm text-slate-400">
+                        {authMode === 'SIGN_IN' 
+                         ? "Enter credentials to access your secure protocol." 
+                         : "Create a new identity to initialize your protocol."}
+                    </p>
+                    
+                    {authError && (
+                        <div className="flex items-center gap-2 p-3 bg-red-950/30 border border-red-900/50 text-red-400 text-xs">
+                            <AlertCircle size={14} />
+                            {authError}
+                        </div>
+                    )}
+
+                    <div className="space-y-3">
+                        <div className="relative">
+                            <Mail size={16} className="absolute left-3 top-2.5 text-slate-500" />
+                            <Input 
+                                placeholder="Email Address" 
+                                value={emailInput}
+                                onChange={(e) => setEmailInput(e.target.value)}
+                                className="pl-10"
+                                autoFocus
+                            />
+                        </div>
+                        <div className="relative">
+                            <Lock size={16} className="absolute left-3 top-2.5 text-slate-500" />
+                            <Input 
+                                type="password"
+                                placeholder="Password" 
+                                value={passwordInput}
+                                onChange={(e) => setPasswordInput(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
+                                className="pl-10"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-3 mt-2">
+                        <Button onClick={handleAuth} className="w-full flex items-center justify-center gap-2">
+                            {authMode === 'SIGN_IN' ? 'ACCESS SYSTEM' : 'INITIALIZE IDENTITY'}
+                        </Button>
+                        
+                        <div className="flex justify-center">
+                            <button 
+                                onClick={() => {
+                                    setAuthMode(authMode === 'SIGN_IN' ? 'SIGN_UP' : 'SIGN_IN');
+                                    setAuthError('');
+                                }}
+                                className="text-xs text-slate-500 hover:text-blue-400 transition-colors underline decoration-blue-900 underline-offset-4"
+                            >
+                                {authMode === 'SIGN_IN' 
+                                 ? "New user? Create an account" 
+                                 : "Existing user? Sign In"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+      </Modal>
     </div>
   );
 }
