@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Task, TaskPriority } from '../types';
 import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, DragStartEvent, DragEndEvent } from '@dnd-kit/core';
@@ -258,14 +259,15 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({ tasks = [], setTasks, cate
         <div className="flex items-center gap-2">
             <Button 
                 onClick={() => setIsManageModalOpen(true)} 
-                size="icon" 
+                size="sm" 
                 variant="secondary"
                 title="Manage Sectors"
+                className="px-2"
             >
-                <Menu size={18} />
+                <Menu size={14} />
             </Button>
             <Button onClick={() => setIsTaskModalOpen(true)} size="sm" className="flex items-center gap-2">
-                <Plus size={14} /> NEW DIRECTIVE
+                <Plus size={14} /> NEW
             </Button>
         </div>
       </div>

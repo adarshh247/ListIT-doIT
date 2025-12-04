@@ -205,50 +205,51 @@ export const DailyTracker: React.FC<ProtocolTrackerProps> = ({
 
   return (
     <div className="h-full flex flex-col animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4 px-1 border-b border-blue-900/30 pb-4">
-        <div>
-           {/* Tab Switcher */}
-           <div className="flex gap-6 mb-2">
-              <button 
-                onClick={() => setProtocolMode('DAILY')}
-                className={cn(
-                    "text-sm font-bold tracking-widest transition-colors relative pb-1",
-                    protocolMode === 'DAILY' ? "text-white" : "text-slate-500 hover:text-slate-300"
-                )}
-              >
-                DAILY PROTOCOL
-                {protocolMode === 'DAILY' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500" />}
-              </button>
-              <button 
-                onClick={() => setProtocolMode('MONTHLY')}
-                className={cn(
-                    "text-sm font-bold tracking-widest transition-colors relative pb-1",
-                    protocolMode === 'MONTHLY' ? "text-white" : "text-slate-500 hover:text-slate-300"
-                )}
-              >
-                MONTHLY PROTOCOL
-                {protocolMode === 'MONTHLY' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500" />}
-              </button>
-           </div>
-
-          <div className="flex items-center gap-3 mt-4">
-            <button onClick={() => navigateDate(-1)} className="text-slate-500 hover:text-blue-400 transition-colors">
-              <ChevronLeft size={18} />
+      <div className="flex flex-col gap-4 mb-6 px-1 border-b border-blue-900/30 pb-4">
+        {/* Tab Switcher */}
+        <div className="flex gap-6">
+            <button 
+            onClick={() => setProtocolMode('DAILY')}
+            className={cn(
+                "text-sm font-bold tracking-widest transition-colors relative pb-1",
+                protocolMode === 'DAILY' ? "text-white" : "text-slate-500 hover:text-slate-300"
+            )}
+            >
+            DAILY PROTOCOL
+            {protocolMode === 'DAILY' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500" />}
             </button>
-            <span className="text-blue-400 text-sm font-mono min-w-[140px] text-center">
-              {protocolMode === 'DAILY' 
-                ? format(currentDate, 'MMMM yyyy').toUpperCase()
-                : format(currentDate, 'yyyy').toUpperCase()
-              }
-            </span>
-            <button onClick={() => navigateDate(1)} className="text-slate-500 hover:text-blue-400 transition-colors">
-              <ChevronRight size={18} />
+            <button 
+            onClick={() => setProtocolMode('MONTHLY')}
+            className={cn(
+                "text-sm font-bold tracking-widest transition-colors relative pb-1",
+                protocolMode === 'MONTHLY' ? "text-white" : "text-slate-500 hover:text-slate-300"
+            )}
+            >
+            MONTHLY PROTOCOL
+            {protocolMode === 'MONTHLY' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500" />}
             </button>
-          </div>
         </div>
-        <Button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2">
-          <Plus size={16} /> ADD {protocolMode === 'DAILY' ? 'DAILY' : 'MONTHLY'} ITEM
-        </Button>
+
+        <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <button onClick={() => navigateDate(-1)} className="text-slate-500 hover:text-blue-400 transition-colors">
+                    <ChevronLeft size={18} />
+                </button>
+                <span className="text-blue-400 text-sm font-mono min-w-[140px] text-center">
+                    {protocolMode === 'DAILY' 
+                    ? format(currentDate, 'MMMM yyyy').toUpperCase()
+                    : format(currentDate, 'yyyy').toUpperCase()
+                    }
+                </span>
+                <button onClick={() => navigateDate(1)} className="text-slate-500 hover:text-blue-400 transition-colors">
+                    <ChevronRight size={18} />
+                </button>
+            </div>
+            
+            <Button onClick={() => setIsModalOpen(true)} size="sm" className="flex items-center gap-2">
+                <Plus size={16} /> ADD ITEM
+            </Button>
+        </div>
       </div>
 
       <div ref={scrollContainerRef} className="flex-1 overflow-auto border border-blue-900/30 bg-slate-950/50 backdrop-blur relative custom-scrollbar">
