@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Habit } from '../types';
 import { format, getDaysInMonth, getDate, isSameDay, addMonths } from 'date-fns';
-import { Check, Plus, Trash2, ChevronLeft, ChevronRight, Flame } from 'lucide-react';
+import { Check, Plus, Trash2, ChevronLeft, ChevronRight, Flame, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, Input, Modal, cn } from './ui';
 
@@ -28,6 +28,7 @@ export const DailyTracker: React.FC<DailyTrackerProps> = ({ habits = [], setHabi
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newHabitTitle, setNewHabitTitle] = useState('');
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [deletingHabitId, setDeletingHabitId] = useState<string | null>(null);
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const todayRef = useRef<HTMLDivElement>(null);
@@ -205,6 +206,8 @@ export const DailyTracker: React.FC<DailyTrackerProps> = ({ habits = [], setHabi
             <AnimatePresence>
               {habits.map((habit) => {
                 const streak = getStreak(habit);
+                const isDeleting = deletingHabitId === habit.id;
+
                 return (
                   <motion.div 
                     key={habit.id}
@@ -215,12 +218,35 @@ export const DailyTracker: React.FC<DailyTrackerProps> = ({ habits = [], setHabi
                   >
                     <div className="sticky left-0 z-10 w-72 bg-slate-950 border-r border-blue-900/50 p-4 flex items-center justify-between group-hover:bg-slate-900 transition-colors">
                       <div className="flex items-center gap-3 overflow-hidden">
-                        <button 
-                          onClick={() => deleteHabit(habit.id)}
-                          className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-500 transition-all"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        {isDeleting ? (
+                          <div className="flex items-center gap-1 animate-in fade-in slide-in-from-left-2 duration-200">
+                             <button 
+                                onClick={() => {
+                                    deleteHabit(habit.id);
+                                    setDeletingHabitId(null);
+                                }}
+                                className="text-red-500 hover:text-red-400 bg-red-950/50 p-1 rounded-none"
+                                title="Confirm Delete"
+                             >
+                                <Check size={14} />
+                             </button>
+                             <button 
+                                onClick={() => setDeletingHabitId(null)}
+                                className="text-slate-400 hover:text-slate-200 bg-slate-800 p-1 rounded-none"
+                                title="Cancel"
+                             >
+                                <X size={14} />
+                             </button>
+                          </div>
+                        ) : (
+                          <button 
+                            onClick={() => setDeletingHabitId(habit.id)}
+                            className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-500 transition-all"
+                            title="Delete Habit"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                         <span className="text-sm font-medium text-slate-300 truncate">{habit.title}</span>
                       </div>
                       <div className={cn("flex items-center gap-1 text-xs font-mono", streak > 2 ? "text-orange-400" : "text-slate-600")}>

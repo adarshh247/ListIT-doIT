@@ -1,3 +1,4 @@
+
 export interface Habit {
   id: string;
   title: string;
@@ -5,7 +6,7 @@ export interface Habit {
   completions: Record<string, boolean>;
 }
 
-export type TaskColumn = 'COMPLETE_IT' | 'MONTHLY' | 'YEARLY';
+export type TaskColumn = string;
 export type TaskPriority = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export interface Task {

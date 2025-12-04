@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AppMode, Habit, Task } from './types';
 import { DailyTracker } from './components/DailyTracker';
@@ -22,14 +23,24 @@ export default function App() {
     }
   });
 
+  // Initialize Categories state
+  const [categories, setCategories] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('doit_categories');
+      return saved ? JSON.parse(saved) : ['Complete It', 'Monthly', 'Yearly'];
+    } catch (e) {
+      return ['Complete It', 'Monthly', 'Yearly'];
+    }
+  });
+
   // Initialize Tasks state
   const [tasks, setTasks] = useState<Task[]>(() => {
     try {
       const saved = localStorage.getItem('doit_tasks');
       return saved ? JSON.parse(saved) : [
-        { id: 't1', title: 'Deploy Production Build', column: 'COMPLETE_IT', completed: false, priority: 'HIGH', createdAt: Date.now() },
-        { id: 't2', title: 'Q3 Financial Review', column: 'MONTHLY', completed: false, priority: 'MEDIUM', createdAt: Date.now() },
-        { id: 't3', title: 'Launch Mobile App', column: 'YEARLY', completed: false, priority: 'HIGH', createdAt: Date.now() }
+        { id: 't1', title: 'Deploy Production Build', column: 'Complete It', completed: false, priority: 'HIGH', createdAt: Date.now() },
+        { id: 't2', title: 'Q3 Financial Review', column: 'Monthly', completed: false, priority: 'MEDIUM', createdAt: Date.now() },
+        { id: 't3', title: 'Launch Mobile App', column: 'Yearly', completed: false, priority: 'HIGH', createdAt: Date.now() }
       ];
     } catch (e) {
       return [];
@@ -41,10 +52,38 @@ export default function App() {
     localStorage.setItem('doit_habits', JSON.stringify(habits));
   }, [habits]);
 
+  // Persist Categories
+  useEffect(() => {
+    localStorage.setItem('doit_categories', JSON.stringify(categories));
+  }, [categories]);
+
   // Persist Tasks
   useEffect(() => {
     localStorage.setItem('doit_tasks', JSON.stringify(tasks));
   }, [tasks]);
+
+  const addCategory = (name: string) => {
+    if (name && !categories.includes(name)) {
+      setCategories(prev => [...prev, name]);
+    }
+  };
+
+  const updateCategory = (oldName: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    if (categories.includes(trimmed) && trimmed !== oldName) {
+      alert(`Sector "${trimmed}" already exists.`);
+      return;
+    }
+    
+    setCategories(prev => prev.map(c => c === oldName ? trimmed : c));
+    setTasks(prev => prev.map(t => t.column === oldName ? { ...t, column: trimmed } : t));
+  };
+
+  const deleteCategory = (name: string) => {
+    setCategories(prev => prev.filter(c => c !== name));
+    setTasks(prev => prev.filter(t => t.column !== name));
+  };
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 selection:bg-blue-500/30 selection:text-white flex flex-col md:flex-row overflow-hidden font-sans">
@@ -109,7 +148,11 @@ export default function App() {
           ) : (
             <TaskBoard 
               tasks={tasks} 
-              setTasks={setTasks} 
+              setTasks={setTasks}
+              categories={categories}
+              onAddCategory={addCategory}
+              onUpdateCategory={updateCategory}
+              onDeleteCategory={deleteCategory}
             />
           )}
         </div>
