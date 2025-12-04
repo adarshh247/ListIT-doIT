@@ -7,9 +7,9 @@ import { LayoutGrid, KanbanSquare, Terminal } from 'lucide-react';
 import { cn } from './components/ui';
 
 export default function App() {
-  const [mode, setMode] = useState<AppMode>(AppMode.DAILY);
+  const [mode, setMode] = useState<AppMode>(AppMode.PROTOCOL);
   
-  // Initialize Habits state
+  // Initialize Daily Habits state
   const [habits, setHabits] = useState<Habit[]>(() => {
     try {
       const saved = localStorage.getItem('doit_habits');
@@ -17,6 +17,19 @@ export default function App() {
         { id: '1', title: 'Deep Work (4h)', completions: {} },
         { id: '2', title: 'Physical Training', completions: {} },
         { id: '3', title: 'Zero Sugar', completions: {} }
+      ];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // Initialize Monthly Habits state
+  const [monthlyHabits, setMonthlyHabits] = useState<Habit[]>(() => {
+    try {
+      const saved = localStorage.getItem('doit_monthly_habits');
+      return saved ? JSON.parse(saved) : [
+        { id: 'm1', title: 'Financial Audit', completions: {} },
+        { id: 'm2', title: 'Network Review', completions: {} }
       ];
     } catch (e) {
       return [];
@@ -51,6 +64,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('doit_habits', JSON.stringify(habits));
   }, [habits]);
+
+  // Persist Monthly Habits
+  useEffect(() => {
+    localStorage.setItem('doit_monthly_habits', JSON.stringify(monthlyHabits));
+  }, [monthlyHabits]);
 
   // Persist Categories
   useEffect(() => {
@@ -96,15 +114,15 @@ export default function App() {
         
         <div className="flex md:flex-col gap-2 md:gap-6">
           <button 
-            onClick={() => setMode(AppMode.DAILY)}
+            onClick={() => setMode(AppMode.PROTOCOL)}
             className={cn(
               "p-3 transition-all duration-300 relative group",
-              mode === AppMode.DAILY ? "text-blue-400" : "text-slate-600 hover:text-slate-300"
+              mode === AppMode.PROTOCOL ? "text-blue-400" : "text-slate-600 hover:text-slate-300"
             )}
-            title="Daily Protocol"
+            title="Protocol Mode"
           >
             <LayoutGrid size={24} strokeWidth={1.5} />
-            {mode === AppMode.DAILY && (
+            {mode === AppMode.PROTOCOL && (
               <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
             )}
           </button>
@@ -140,10 +158,12 @@ export default function App() {
         />
         
         <div className="relative z-10 h-full max-w-7xl mx-auto">
-          {mode === AppMode.DAILY ? (
+          {mode === AppMode.PROTOCOL ? (
             <DailyTracker 
-              habits={habits} 
-              setHabits={setHabits} 
+              dailyHabits={habits} 
+              setDailyHabits={setHabits} 
+              monthlyHabits={monthlyHabits}
+              setMonthlyHabits={setMonthlyHabits}
             />
           ) : (
             <TaskBoard 

@@ -2,7 +2,7 @@
 export interface Habit {
   id: string;
   title: string;
-  // Map of date string (YYYY-MM-DD) to boolean
+  // Map of date string (YYYY-MM-DD for daily, YYYY-MM for monthly) to boolean
   completions: Record<string, boolean>;
 }
 
@@ -19,6 +19,6 @@ export interface Task {
 }
 
 export enum AppMode {
-  DAILY = 'DAILY',
+  PROTOCOL = 'PROTOCOL',
   TASKS = 'TASKS'
 }

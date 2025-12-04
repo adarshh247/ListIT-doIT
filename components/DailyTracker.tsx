@@ -1,14 +1,22 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Habit } from '../types';
-import { format, getDaysInMonth, getDate, isSameDay, addMonths } from 'date-fns';
+import { format, getDaysInMonth, getDate, isSameDay, addMonths, addYears, getMonth } from 'date-fns';
 import { Check, Plus, Trash2, ChevronLeft, ChevronRight, Flame, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, Input, Modal, cn } from './ui';
 
-// Local helpers for missing date-fns exports
+// Local helpers
 const startOfMonth = (date: Date) => {
   const d = new Date(date);
   d.setDate(1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const startOfYear = (date: Date) => {
+  const d = new Date(date);
+  d.setFullYear(d.getFullYear(), 0, 1);
   d.setHours(0, 0, 0, 0);
   return d;
 };
@@ -19,25 +27,43 @@ const subDays = (date: Date, amount: number) => {
   return d;
 };
 
-interface DailyTrackerProps {
-  habits: Habit[];
-  setHabits: (value: Habit[] | ((val: Habit[]) => Habit[])) => void;
+const subMonths = (date: Date, amount: number) => {
+    const d = new Date(date);
+    d.setMonth(d.getMonth() - amount);
+    return d;
+};
+
+interface ProtocolTrackerProps {
+  dailyHabits: Habit[];
+  setDailyHabits: (value: Habit[] | ((val: Habit[]) => Habit[])) => void;
+  monthlyHabits: Habit[];
+  setMonthlyHabits: (value: Habit[] | ((val: Habit[]) => Habit[])) => void;
 }
 
-export const DailyTracker: React.FC<DailyTrackerProps> = ({ habits = [], setHabits }) => {
+type ProtocolMode = 'DAILY' | 'MONTHLY';
+
+export const DailyTracker: React.FC<ProtocolTrackerProps> = ({ 
+  dailyHabits = [], 
+  setDailyHabits,
+  monthlyHabits = [],
+  setMonthlyHabits
+}) => {
+  const [protocolMode, setProtocolMode] = useState<ProtocolMode>('DAILY');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newHabitTitle, setNewHabitTitle] = useState('');
-  const [currentDate, setCurrentDate] = useState(new Date());
+  
+  // Date states
+  const [currentDate, setCurrentDate] = useState(new Date()); // Used for Month in Daily, Year in Monthly
   const [deletingHabitId, setDeletingHabitId] = useState<string | null>(null);
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const todayRef = useRef<HTMLDivElement>(null);
   const stickyColRef = useRef<HTMLDivElement>(null);
 
+  // --- Derived Data for DAILY ---
   const daysInMonth = getDaysInMonth(currentDate);
   const currentMonthStart = startOfMonth(currentDate);
   
-  // Generate array of days for current month
   const days = useMemo(() => {
     return Array.from({ length: daysInMonth }, (_, i) => {
       const date = new Date(currentMonthStart);
@@ -46,43 +72,48 @@ export const DailyTracker: React.FC<DailyTrackerProps> = ({ habits = [], setHabi
     });
   }, [daysInMonth, currentMonthStart]);
 
-  // Initial scroll to current date with mobile/sticky column compensation
+  // --- Derived Data for MONTHLY ---
+  const months = useMemo(() => {
+    const yearStart = startOfYear(currentDate);
+    return Array.from({ length: 12 }, (_, i) => {
+      return addMonths(yearStart, i);
+    });
+  }, [currentDate]);
+
+
+  // Scroll logic
   useEffect(() => {
+    // Logic runs for both DAILY and MONTHLY modes to center the current item
     const timer = setTimeout(() => {
       if (todayRef.current && scrollContainerRef.current) {
         const container = scrollContainerRef.current;
         const target = todayRef.current;
         const stickyCol = stickyColRef.current;
         
-        // Measure sticky column width dynamically or fallback to 0
         const stickyWidth = stickyCol ? stickyCol.offsetWidth : 0;
         const containerWidth = container.clientWidth;
-        
-        // Check if sticky column consumes significant space relative to container (mobile scenario)
-        // If so, we need to center the target in the REMAINING available space, not the whole container.
         const availableWidth = Math.max(0, containerWidth - stickyWidth);
         
         if (stickyWidth > 0 && availableWidth > 0) {
           const targetLeft = target.offsetLeft;
           const targetWidth = target.offsetWidth;
-          
-          // Formula to center target in the available space to the right of sticky col:
-          // ScrollLeft = TargetLeft + (TargetHalfWidth) - StickyWidth - (AvailableHalfWidth)
           const scrollLeft = targetLeft + (targetWidth / 2) - stickyWidth - (availableWidth / 2);
-          
           container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
         } else {
-          // Standard desktop behavior or when sticky col isn't obscuring view
           target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
         }
       }
-    }, 300); // 300ms delay to allow for rendering/layout stabilization
+    }, 300);
     return () => clearTimeout(timer);
-  }, [currentDate, daysInMonth]);
+  }, [currentDate, protocolMode]);
 
+  // Handlers
   const toggleHabit = (habitId: string, date: Date) => {
-    const dateKey = format(date, 'yyyy-MM-dd');
-    setHabits(prev => prev.map(h => {
+    const isDaily = protocolMode === 'DAILY';
+    const dateKey = isDaily ? format(date, 'yyyy-MM-dd') : format(date, 'yyyy-MM');
+    const setFunc = isDaily ? setDailyHabits : setMonthlyHabits;
+
+    setFunc(prev => prev.map(h => {
       if (h.id === habitId) {
         const newCompletions = { ...h.completions };
         if (newCompletions[dateKey]) {
@@ -103,43 +134,68 @@ export const DailyTracker: React.FC<DailyTrackerProps> = ({ habits = [], setHabi
       title,
       completions: {}
     };
-    setHabits(prev => [...prev, newHabit]);
+    if (protocolMode === 'DAILY') {
+      setDailyHabits(prev => [...prev, newHabit]);
+    } else {
+      setMonthlyHabits(prev => [...prev, newHabit]);
+    }
     setNewHabitTitle('');
     setIsModalOpen(false);
   };
 
   const deleteHabit = (id: string) => {
-    setHabits(prev => prev.filter(h => h.id !== id));
+    if (protocolMode === 'DAILY') {
+      setDailyHabits(prev => prev.filter(h => h.id !== id));
+    } else {
+      setMonthlyHabits(prev => prev.filter(h => h.id !== id));
+    }
   };
 
-  const changeMonth = (delta: number) => {
-    setCurrentDate(prev => addMonths(prev, delta));
+  const navigateDate = (delta: number) => {
+    if (protocolMode === 'DAILY') {
+      setCurrentDate(prev => addMonths(prev, delta));
+    } else {
+      setCurrentDate(prev => addYears(prev, delta));
+    }
   };
 
-  // Calculate daily progress
-  const dailyProgress = days.map(day => {
-    if (!habits || habits.length === 0) return 0;
-    const dateKey = format(day, 'yyyy-MM-dd');
-    const completedCount = habits.filter(h => h.completions[dateKey]).length;
-    return Math.round((completedCount / habits.length) * 100);
-  });
+  // Logic Selectors
+  const currentHabits = protocolMode === 'DAILY' ? dailyHabits : monthlyHabits;
+  const currentColumns = protocolMode === 'DAILY' ? days : months;
+  const dateFormat = protocolMode === 'DAILY' ? 'yyyy-MM-dd' : 'yyyy-MM';
+
+  // Calculate Progress
+  const calculateProgress = () => {
+    return currentColumns.map(colDate => {
+      if (!currentHabits || currentHabits.length === 0) return 0;
+      const dateKey = format(colDate, dateFormat);
+      const completedCount = currentHabits.filter(h => h.completions[dateKey]).length;
+      return Math.round((completedCount / currentHabits.length) * 100);
+    });
+  };
+
+  const dailyProgress = calculateProgress();
 
   // Calculate Streak
   const getStreak = (habit: Habit) => {
     let streak = 0;
-    let checkDate = new Date();
+    let checkDate = new Date(); // Start checking from now
     
-    // Check if completed today, if so, start count from today, otherwise from yesterday
-    const todayKey = format(checkDate, 'yyyy-MM-dd');
-    if (!habit.completions[todayKey]) {
-      checkDate = subDays(checkDate, 1);
+    // For Monthly, check if current month is done, if not start from last month
+    // For Daily, check if today is done, if not start from yesterday
+    
+    const isDaily = protocolMode === 'DAILY';
+    const currentKey = format(checkDate, dateFormat);
+    
+    if (!habit.completions[currentKey]) {
+        checkDate = isDaily ? subDays(checkDate, 1) : subMonths(checkDate, 1);
     }
 
     while (true) {
-      const key = format(checkDate, 'yyyy-MM-dd');
+      const key = format(checkDate, dateFormat);
       if (habit.completions[key]) {
         streak++;
-        checkDate = subDays(checkDate, 1);
+        checkDate = isDaily ? subDays(checkDate, 1) : subMonths(checkDate, 1);
       } else {
         break;
       }
@@ -149,25 +205,49 @@ export const DailyTracker: React.FC<DailyTrackerProps> = ({ habits = [], setHabi
 
   return (
     <div className="h-full flex flex-col animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 px-1">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4 px-1 border-b border-blue-900/30 pb-4">
         <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight flex items-center gap-4">
-            DAILY PROTOCOL
-          </h2>
-          <div className="flex items-center gap-3 mt-2">
-            <button onClick={() => changeMonth(-1)} className="text-slate-500 hover:text-blue-400 transition-colors">
+           {/* Tab Switcher */}
+           <div className="flex gap-6 mb-2">
+              <button 
+                onClick={() => setProtocolMode('DAILY')}
+                className={cn(
+                    "text-sm font-bold tracking-widest transition-colors relative pb-1",
+                    protocolMode === 'DAILY' ? "text-white" : "text-slate-500 hover:text-slate-300"
+                )}
+              >
+                DAILY PROTOCOL
+                {protocolMode === 'DAILY' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500" />}
+              </button>
+              <button 
+                onClick={() => setProtocolMode('MONTHLY')}
+                className={cn(
+                    "text-sm font-bold tracking-widest transition-colors relative pb-1",
+                    protocolMode === 'MONTHLY' ? "text-white" : "text-slate-500 hover:text-slate-300"
+                )}
+              >
+                MONTHLY PROTOCOL
+                {protocolMode === 'MONTHLY' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500" />}
+              </button>
+           </div>
+
+          <div className="flex items-center gap-3 mt-4">
+            <button onClick={() => navigateDate(-1)} className="text-slate-500 hover:text-blue-400 transition-colors">
               <ChevronLeft size={18} />
             </button>
             <span className="text-blue-400 text-sm font-mono min-w-[140px] text-center">
-              {format(currentDate, 'MMMM yyyy').toUpperCase()}
+              {protocolMode === 'DAILY' 
+                ? format(currentDate, 'MMMM yyyy').toUpperCase()
+                : format(currentDate, 'yyyy').toUpperCase()
+              }
             </span>
-            <button onClick={() => changeMonth(1)} className="text-slate-500 hover:text-blue-400 transition-colors">
+            <button onClick={() => navigateDate(1)} className="text-slate-500 hover:text-blue-400 transition-colors">
               <ChevronRight size={18} />
             </button>
           </div>
         </div>
         <Button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2">
-          <Plus size={16} /> ADD HABIT
+          <Plus size={16} /> ADD {protocolMode === 'DAILY' ? 'DAILY' : 'MONTHLY'} ITEM
         </Button>
       </div>
 
@@ -177,25 +257,34 @@ export const DailyTracker: React.FC<DailyTrackerProps> = ({ habits = [], setHabi
           <div className="flex sticky top-0 z-20 bg-slate-950 border-b border-blue-900/50">
             <div 
               ref={stickyColRef}
-              className="sticky left-0 z-30 w-72 bg-slate-950 border-r border-blue-900/50 p-4 font-mono text-xs text-blue-300 flex items-center justify-between"
+              className="sticky left-0 z-30 w-72 bg-slate-950 border-r border-blue-900/50 p-4 font-mono text-xs text-blue-300 flex items-center justify-between shadow-[4px_0_10px_rgba(0,0,0,0.5)]"
             >
-              <span>TASK IDENTIFIER</span>
+              <span>{protocolMode === 'DAILY' ? 'HABIT IDENTIFIER' : 'MONTHLY OBJECTIVE'}</span>
               <span className="text-[10px] text-slate-500">STREAK</span>
             </div>
-            {days.map((day) => {
-              const isToday = isSameDay(day, new Date());
+            {currentColumns.map((dateItem) => {
+              const isToday = protocolMode === 'DAILY' 
+                ? isSameDay(dateItem, new Date()) 
+                : (getMonth(dateItem) === getMonth(new Date()) && dateItem.getFullYear() === new Date().getFullYear());
+              
               return (
                 <div 
-                  key={day.toISOString()} 
+                  key={dateItem.toISOString()} 
                   ref={isToday ? todayRef : null}
                   className={cn(
-                    "flex-shrink-0 w-10 h-14 flex flex-col items-center justify-center border-r border-blue-900/20 font-mono text-xs transition-colors",
+                    "flex-shrink-0 flex flex-col items-center justify-center border-r border-blue-900/20 font-mono text-xs transition-colors",
+                    protocolMode === 'DAILY' ? "w-10 h-14" : "w-24 h-14",
                     isToday ? "bg-blue-900/40 text-blue-100 font-bold border-blue-500/30" : "text-slate-500"
                   )}
-                  data-date={format(day, 'yyyy-MM-dd')}
                 >
-                  <span className="text-[10px] uppercase">{format(day, 'EEE')}</span>
-                  <span className="text-sm">{getDate(day)}</span>
+                  {protocolMode === 'DAILY' ? (
+                    <>
+                        <span className="text-[10px] uppercase">{format(dateItem, 'EEE')}</span>
+                        <span className="text-sm">{getDate(dateItem)}</span>
+                    </>
+                  ) : (
+                    <span className="text-sm uppercase">{format(dateItem, 'MMM')}</span>
+                  )}
                 </div>
               );
             })}
@@ -204,69 +293,93 @@ export const DailyTracker: React.FC<DailyTrackerProps> = ({ habits = [], setHabi
           {/* Habits Rows */}
           <div className="divide-y divide-blue-900/20">
             <AnimatePresence>
-              {habits.map((habit) => {
+              {currentHabits.map((habit) => {
                 const streak = getStreak(habit);
                 const isDeleting = deletingHabitId === habit.id;
 
                 return (
                   <motion.div 
+                    layout
                     key={habit.id}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.2 }}
                     className="flex group hover:bg-white/[0.02] transition-colors"
                   >
-                    <div className="sticky left-0 z-10 w-72 bg-slate-950 border-r border-blue-900/50 p-4 flex items-center justify-between group-hover:bg-slate-900 transition-colors">
-                      <div className="flex items-center gap-3 overflow-hidden">
-                        {isDeleting ? (
-                          <div className="flex items-center gap-1 animate-in fade-in slide-in-from-left-2 duration-200">
-                             <button 
-                                onClick={() => {
-                                    deleteHabit(habit.id);
-                                    setDeletingHabitId(null);
-                                }}
-                                className="text-red-500 hover:text-red-400 bg-red-950/50 p-1 rounded-none"
-                                title="Confirm Delete"
-                             >
-                                <Check size={14} />
-                             </button>
-                             <button 
-                                onClick={() => setDeletingHabitId(null)}
-                                className="text-slate-400 hover:text-slate-200 bg-slate-800 p-1 rounded-none"
-                                title="Cancel"
-                             >
-                                <X size={14} />
-                             </button>
-                          </div>
-                        ) : (
-                          <button 
-                            onClick={() => setDeletingHabitId(habit.id)}
-                            className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-500 transition-all"
-                            title="Delete Habit"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
+                    <div className="sticky left-0 z-10 w-72 bg-slate-950 border-r border-blue-900/50 p-4 flex items-center justify-between group-hover:bg-slate-900 transition-colors shadow-[4px_0_10px_rgba(0,0,0,0.5)]">
+                      <div className="flex items-center gap-3 overflow-hidden flex-1">
+                        <div className="relative w-14 h-6 flex-shrink-0">
+                             <AnimatePresence mode="popLayout" initial={false}>
+                                {isDeleting ? (
+                                  <motion.div 
+                                    key="confirm"
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    className="absolute inset-0 flex items-center gap-1"
+                                  >
+                                     <button 
+                                        onClick={() => {
+                                            deleteHabit(habit.id);
+                                            setDeletingHabitId(null);
+                                        }}
+                                        className="text-red-500 hover:text-red-400 bg-red-950/50 p-1 rounded-none flex items-center justify-center w-6 h-6"
+                                        title="Confirm Delete"
+                                     >
+                                        <Check size={14} />
+                                     </button>
+                                     <button 
+                                        onClick={() => setDeletingHabitId(null)}
+                                        className="text-slate-400 hover:text-slate-200 bg-slate-800 p-1 rounded-none flex items-center justify-center w-6 h-6"
+                                        title="Cancel"
+                                     >
+                                        <X size={14} />
+                                     </button>
+                                  </motion.div>
+                                ) : (
+                                  <motion.div
+                                    key="delete"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="absolute inset-0 flex items-center"
+                                  >
+                                      <button 
+                                        onClick={() => setDeletingHabitId(habit.id)}
+                                        className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-500 transition-all p-1"
+                                        title="Delete Item"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                  </motion.div>
+                                )}
+                             </AnimatePresence>
+                        </div>
                         <span className="text-sm font-medium text-slate-300 truncate">{habit.title}</span>
                       </div>
-                      <div className={cn("flex items-center gap-1 text-xs font-mono", streak > 2 ? "text-orange-400" : "text-slate-600")}>
+                      <div className={cn("flex items-center gap-1 text-xs font-mono pl-2", streak > 2 ? "text-orange-400" : "text-slate-600")}>
                         {streak > 0 && <span className="font-bold">{streak}</span>}
                         {streak > 0 && <Flame size={12} className={streak > 4 ? "fill-orange-400 text-orange-400 animate-pulse" : ""} />}
                       </div>
                     </div>
-                    {days.map((day) => {
-                      const dateKey = format(day, 'yyyy-MM-dd');
+                    {currentColumns.map((dateItem) => {
+                      const dateKey = format(dateItem, dateFormat);
                       const isCompleted = habit.completions[dateKey];
-                      const isToday = isSameDay(day, new Date());
+                      const isToday = protocolMode === 'DAILY' 
+                        ? isSameDay(dateItem, new Date()) 
+                        : (getMonth(dateItem) === getMonth(new Date()) && dateItem.getFullYear() === new Date().getFullYear());
+                      
                       return (
                         <div 
-                          key={day.toISOString()} 
+                          key={dateItem.toISOString()} 
                           className={cn(
-                            "flex-shrink-0 w-10 h-12 border-r border-blue-900/20 flex items-center justify-center cursor-pointer transition-all duration-200 relative",
+                            "flex-shrink-0 border-r border-blue-900/20 flex items-center justify-center cursor-pointer transition-all duration-200 relative",
+                            protocolMode === 'DAILY' ? "w-10 h-12" : "w-24 h-12",
                             isToday && !isCompleted && "bg-blue-900/10",
                             isCompleted && "bg-blue-600/10"
                           )}
-                          onClick={() => toggleHabit(habit.id, day)}
+                          onClick={() => toggleHabit(habit.id, dateItem)}
                         >
                           {isToday && <div className="absolute inset-0 border-2 border-blue-500/20 pointer-events-none" />}
                           <div className={cn(
@@ -286,17 +399,21 @@ export const DailyTracker: React.FC<DailyTrackerProps> = ({ habits = [], setHabi
 
           {/* Footer Progress Row */}
           <div className="flex sticky bottom-0 z-20 bg-slate-950 border-t border-blue-900/50 shadow-[0_-4px_10px_rgba(0,0,0,0.5)]">
-            <div className="sticky left-0 z-30 w-72 bg-slate-950 border-r border-blue-900/50 p-4 font-mono text-xs text-blue-300 flex items-center">
-              DAILY COMPLETION RATE
+            <div className="sticky left-0 z-30 w-72 bg-slate-950 border-r border-blue-900/50 p-4 font-mono text-xs text-blue-300 flex items-center shadow-[4px_0_10px_rgba(0,0,0,0.5)]">
+              {protocolMode === 'DAILY' ? 'DAILY COMPLETION RATE' : 'MONTHLY COMPLETION RATE'}
             </div>
             {dailyProgress.map((prog, idx) => {
-               const day = days[idx];
-               const isToday = isSameDay(day, new Date());
+               const dateItem = currentColumns[idx];
+               const isToday = protocolMode === 'DAILY' 
+                    ? isSameDay(dateItem, new Date()) 
+                    : (getMonth(dateItem) === getMonth(new Date()) && dateItem.getFullYear() === new Date().getFullYear());
+               
                return (
                 <div 
                   key={`prog-${idx}`} 
                   className={cn(
-                    "flex-shrink-0 w-10 h-12 border-r border-blue-900/20 flex flex-col justify-end pb-1 items-center relative group",
+                    "flex-shrink-0 border-r border-blue-900/20 flex flex-col justify-end pb-1 items-center relative group",
+                    protocolMode === 'DAILY' ? "w-10 h-12" : "w-24 h-12",
                     isToday ? "bg-blue-900/10" : ""
                   )}
                 >
@@ -315,11 +432,11 @@ export const DailyTracker: React.FC<DailyTrackerProps> = ({ habits = [], setHabi
       <Modal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
-        title="Initialize New Protocol"
+        title={`Initialize ${protocolMode === 'DAILY' ? 'Daily' : 'Monthly'} Protocol`}
       >
         <div className="flex flex-col gap-4">
           <Input 
-            placeholder="Enter habit name..." 
+            placeholder={protocolMode === 'DAILY' ? "E.g., Deep Work (4h)..." : "E.g., Financial Audit..."}
             value={newHabitTitle}
             onChange={(e) => setNewHabitTitle(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addHabit(newHabitTitle)}
