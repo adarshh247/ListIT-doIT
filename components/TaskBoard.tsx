@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Task, TaskPriority } from '../types';
 import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, DragStartEvent, DragEndEvent } from '@dnd-kit/core';
@@ -10,8 +9,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 interface TaskBoardProps {
   tasks: Task[];
-  setTasks: (value: Task[] | ((val: Task[]) => Task[])) => void;
   categories: string[];
+  onAddTask: (title: string, priority: TaskPriority, category: string) => void;
+  onUpdateTask: (id: string, updates: Partial<Task>) => void;
+  onDeleteTask: (id: string) => void;
+  onToggleTask: (id: string) => void;
+  onMoveTask: (taskId: string, newCategory: string, newIndex: number) => void;
   onAddCategory: (name: string) => void;
   onUpdateCategory: (oldName: string, newName: string) => void;
   onDeleteCategory: (name: string) => void;
@@ -40,7 +43,7 @@ interface SortableTaskItemProps {
   onCancelDelete: () => void;
 }
 
-const SortableTaskItem = ({ task, onToggle, isDeleting, onInitiateDelete, onConfirmDelete, onCancelDelete }: SortableTaskItemProps) => {
+const SortableTaskItem: React.FC<SortableTaskItemProps> = ({ task, onToggle, isDeleting, onInitiateDelete, onConfirmDelete, onCancelDelete }) => {
   const {
     attributes,
     listeners,
@@ -149,7 +152,18 @@ const SortableTaskItem = ({ task, onToggle, isDeleting, onInitiateDelete, onConf
   );
 };
 
-export const TaskBoard: React.FC<TaskBoardProps> = ({ tasks = [], setTasks, categories, onAddCategory, onUpdateCategory, onDeleteCategory }) => {
+export const TaskBoard: React.FC<TaskBoardProps> = ({ 
+    tasks = [], 
+    categories, 
+    onAddTask, 
+    onUpdateTask, 
+    onDeleteTask, 
+    onToggleTask, 
+    onMoveTask,
+    onAddCategory, 
+    onUpdateCategory, 
+    onDeleteCategory 
+}) => {
   const [activeTab, setActiveTab] = useState<string>(categories[0] || '');
   const [activeId, setActiveId] = useState<string | null>(null);
   
@@ -192,22 +206,16 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({ tasks = [], setTasks, cate
     if (over && active.id !== over.id) {
        const oldIndex = tasks.findIndex(t => t.id === active.id);
        const newIndex = tasks.findIndex(t => t.id === over.id);
-       setTasks((items) => arrayMove(items, oldIndex, newIndex));
+       // We pass the new Index, but primarily we care if it stayed in the same filtered list
+       // Since we filter by column, dragging here is only reordering within the column
+       onMoveTask(active.id as string, activeTab, newIndex);
     }
     setActiveId(null);
   };
 
-  const addTask = (title: string, priority: TaskPriority) => {
-    if (!title.trim()) return;
-    const newTask: Task = {
-      id: crypto.randomUUID(),
-      title,
-      column: activeTab,
-      completed: false,
-      priority,
-      createdAt: Date.now()
-    };
-    setTasks(prev => [...prev, newTask]);
+  const handleAddTask = () => {
+    if (!newTaskTitle.trim()) return;
+    onAddTask(newTaskTitle, newTaskPriority, activeTab);
     setNewTaskTitle('');
     setNewTaskPriority('MEDIUM');
     setIsTaskModalOpen(false);
@@ -238,12 +246,6 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({ tasks = [], setTasks, cate
   const confirmDeleteCategory = (category: string) => {
     onDeleteCategory(category);
     setDeletingCategory(null);
-  };
-
-  const deleteTask = (id: string) => setTasks(prev => prev.filter(t => t.id !== id));
-
-  const toggleTask = (id: string) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
   };
 
   const filteredTasks = tasks.filter(t => t.column === activeTab);
@@ -321,11 +323,11 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({ tasks = [], setTasks, cate
                 <SortableTaskItem 
                   key={task.id} 
                   task={task} 
-                  onToggle={toggleTask}
+                  onToggle={onToggleTask}
                   isDeleting={deletingTaskId === task.id}
                   onInitiateDelete={setDeletingTaskId}
                   onConfirmDelete={(id) => {
-                    deleteTask(id);
+                    onDeleteTask(id);
                     setDeletingTaskId(null);
                   }}
                   onCancelDelete={() => setDeletingTaskId(null)}
@@ -365,7 +367,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({ tasks = [], setTasks, cate
             placeholder="Describe directive..." 
             value={newTaskTitle}
             onChange={(e) => setNewTaskTitle(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addTask(newTaskTitle, newTaskPriority)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
             autoFocus
           />
           
@@ -387,7 +389,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({ tasks = [], setTasks, cate
           </div>
 
           <div className="flex gap-2 justify-end">
-            <Button onClick={() => addTask(newTaskTitle, newTaskPriority)}>CONFIRM</Button>
+            <Button onClick={handleAddTask}>CONFIRM</Button>
           </div>
         </div>
       </Modal>

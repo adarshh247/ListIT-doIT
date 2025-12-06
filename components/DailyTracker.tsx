@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Habit } from '../types';
+import { Habit, ProtocolType } from '../types';
 import { format, getDaysInMonth, getDate, isSameDay, addMonths, addYears, getMonth } from 'date-fns';
 import { Check, Plus, Trash2, ChevronLeft, ChevronRight, Flame, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -35,20 +35,20 @@ const subMonths = (date: Date, amount: number) => {
 
 interface ProtocolTrackerProps {
   dailyHabits: Habit[];
-  setDailyHabits: (value: Habit[] | ((val: Habit[]) => Habit[])) => void;
   monthlyHabits: Habit[];
-  setMonthlyHabits: (value: Habit[] | ((val: Habit[]) => Habit[])) => void;
+  onAddHabit: (title: string, type: ProtocolType) => void;
+  onToggleHabit: (id: string, date: Date, type: ProtocolType) => void;
+  onDeleteHabit: (id: string, type: ProtocolType) => void;
 }
-
-type ProtocolMode = 'DAILY' | 'MONTHLY';
 
 export const DailyTracker: React.FC<ProtocolTrackerProps> = ({ 
   dailyHabits = [], 
-  setDailyHabits,
   monthlyHabits = [],
-  setMonthlyHabits
+  onAddHabit,
+  onToggleHabit,
+  onDeleteHabit
 }) => {
-  const [protocolMode, setProtocolMode] = useState<ProtocolMode>('DAILY');
+  const [protocolMode, setProtocolMode] = useState<ProtocolType>('DAILY');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newHabitTitle, setNewHabitTitle] = useState('');
   
@@ -107,48 +107,11 @@ export const DailyTracker: React.FC<ProtocolTrackerProps> = ({
     return () => clearTimeout(timer);
   }, [currentDate, protocolMode]);
 
-  // Handlers
-  const toggleHabit = (habitId: string, date: Date) => {
-    const isDaily = protocolMode === 'DAILY';
-    const dateKey = isDaily ? format(date, 'yyyy-MM-dd') : format(date, 'yyyy-MM');
-    const setFunc = isDaily ? setDailyHabits : setMonthlyHabits;
-
-    setFunc(prev => prev.map(h => {
-      if (h.id === habitId) {
-        const newCompletions = { ...h.completions };
-        if (newCompletions[dateKey]) {
-          delete newCompletions[dateKey];
-        } else {
-          newCompletions[dateKey] = true;
-        }
-        return { ...h, completions: newCompletions };
-      }
-      return h;
-    }));
-  };
-
-  const addHabit = (title: string) => {
-    if (!title.trim()) return;
-    const newHabit: Habit = {
-      id: crypto.randomUUID(),
-      title,
-      completions: {}
-    };
-    if (protocolMode === 'DAILY') {
-      setDailyHabits(prev => [...prev, newHabit]);
-    } else {
-      setMonthlyHabits(prev => [...prev, newHabit]);
-    }
+  const handleAddHabit = () => {
+    if (!newHabitTitle.trim()) return;
+    onAddHabit(newHabitTitle, protocolMode);
     setNewHabitTitle('');
     setIsModalOpen(false);
-  };
-
-  const deleteHabit = (id: string) => {
-    if (protocolMode === 'DAILY') {
-      setDailyHabits(prev => prev.filter(h => h.id !== id));
-    } else {
-      setMonthlyHabits(prev => prev.filter(h => h.id !== id));
-    }
   };
 
   const navigateDate = (delta: number) => {
@@ -246,9 +209,11 @@ export const DailyTracker: React.FC<ProtocolTrackerProps> = ({
                 </button>
             </div>
             
-            <Button onClick={() => setIsModalOpen(true)} size="sm" className="flex items-center gap-2">
-                <Plus size={16} /> ADD ITEM
-            </Button>
+            <div className="flex justify-end flex-1">
+              <Button onClick={() => setIsModalOpen(true)} size="sm" className="flex items-center gap-2">
+                  <Plus size={16} /> ADD ITEM
+              </Button>
+            </div>
         </div>
       </div>
 
@@ -322,7 +287,7 @@ export const DailyTracker: React.FC<ProtocolTrackerProps> = ({
                                   >
                                      <button 
                                         onClick={() => {
-                                            deleteHabit(habit.id);
+                                            onDeleteHabit(habit.id, protocolMode);
                                             setDeletingHabitId(null);
                                         }}
                                         className="text-red-500 hover:text-red-400 bg-red-950/50 p-1 rounded-none flex items-center justify-center w-6 h-6"
@@ -380,7 +345,7 @@ export const DailyTracker: React.FC<ProtocolTrackerProps> = ({
                             isToday && !isCompleted && "bg-blue-900/10",
                             isCompleted && "bg-blue-600/10"
                           )}
-                          onClick={() => toggleHabit(habit.id, dateItem)}
+                          onClick={() => onToggleHabit(habit.id, dateItem, protocolMode)}
                         >
                           {isToday && <div className="absolute inset-0 border-2 border-blue-500/20 pointer-events-none" />}
                           <div className={cn(
@@ -440,11 +405,11 @@ export const DailyTracker: React.FC<ProtocolTrackerProps> = ({
             placeholder={protocolMode === 'DAILY' ? "E.g., Deep Work (4h)..." : "E.g., Financial Audit..."}
             value={newHabitTitle}
             onChange={(e) => setNewHabitTitle(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addHabit(newHabitTitle)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddHabit()}
             autoFocus
           />
           <div className="flex gap-2 justify-end">
-            <Button onClick={() => addHabit(newHabitTitle)}>CONFIRM</Button>
+            <Button onClick={handleAddHabit}>CONFIRM</Button>
           </div>
         </div>
       </Modal>

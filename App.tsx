@@ -1,12 +1,15 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { AppMode, Habit, Task } from './types';
+import React, { useState, useEffect } from 'react';
+import { AppMode, Habit, Task, ProtocolType, TaskPriority } from './types';
 import { DailyTracker } from './components/DailyTracker';
 import { TaskBoard } from './components/TaskBoard';
 import { LayoutGrid, KanbanSquare, Terminal, User, LogOut, Check, Lock, Mail, AlertCircle } from 'lucide-react';
 import { cn, Modal, Input, Button } from './components/ui';
+import { supabase } from './services/supabase';
+import { format } from 'date-fns';
+import { arrayMove } from '@dnd-kit/sortable';
 
-// Default Data Generators
+// Default Data Generators (Fallback)
 const getDefaultHabits = (): Habit[] => [
   { id: '1', title: 'Deep Work (4h)', completions: {} },
   { id: '2', title: 'Physical Training', completions: {} },
@@ -28,7 +31,8 @@ const getDefaultTasks = (): Task[] => [
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>(AppMode.PROTOCOL);
-  const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('doit_current_user'));
+  const [session, setSession] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   
   // Auth Modal State
@@ -44,100 +48,152 @@ export default function App() {
   const [categories, setCategories] = useState<string[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
 
-  // Helper to get storage keys based on user
-  const getStorageKey = (key: string) => currentUser ? `${key}_${currentUser}` : key;
-
-  // Load Data Effect
+  // --- Auth & Initial Load ---
   useEffect(() => {
-    setIsLoading(true);
-    
-    // Slight delay to ensure state doesn't clash during switch, 
-    // and to prevent persistence effects from running with wrong data
-    const loadData = () => {
-      try {
-        const h = localStorage.getItem(getStorageKey('doit_habits'));
-        setHabits(h ? JSON.parse(h) : getDefaultHabits());
-
-        const mh = localStorage.getItem(getStorageKey('doit_monthly_habits'));
-        setMonthlyHabits(mh ? JSON.parse(mh) : getDefaultMonthlyHabits());
-
-        const c = localStorage.getItem(getStorageKey('doit_categories'));
-        setCategories(c ? JSON.parse(c) : getDefaultCategories());
-
-        const t = localStorage.getItem(getStorageKey('doit_tasks'));
-        setTasks(t ? JSON.parse(t) : getDefaultTasks());
-      } catch (e) {
-        console.error("Failed to load data", e);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadData();
-  }, [currentUser]);
-
-  // Persist Data Effects (Only if not loading)
-  useEffect(() => {
-    if (!isLoading) localStorage.setItem(getStorageKey('doit_habits'), JSON.stringify(habits));
-  }, [habits, currentUser, isLoading]);
-
-  useEffect(() => {
-    if (!isLoading) localStorage.setItem(getStorageKey('doit_monthly_habits'), JSON.stringify(monthlyHabits));
-  }, [monthlyHabits, currentUser, isLoading]);
-
-  useEffect(() => {
-    if (!isLoading) localStorage.setItem(getStorageKey('doit_categories'), JSON.stringify(categories));
-  }, [categories, currentUser, isLoading]);
-
-  useEffect(() => {
-    if (!isLoading) localStorage.setItem(getStorageKey('doit_tasks'), JSON.stringify(tasks));
-  }, [tasks, currentUser, isLoading]);
-
-  // Persist Current User
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('doit_current_user', currentUser);
-    } else {
-      localStorage.removeItem('doit_current_user');
-    }
-  }, [currentUser]);
-
-  const handleAuth = () => {
-    setAuthError('');
-    const email = emailInput.trim();
-    const password = passwordInput.trim();
-
-    if (!email || !password) {
-      setAuthError('Email and password are required.');
+    if (!supabase) {
+      // Fallback to local storage mode if Supabase not configured
+      const user = localStorage.getItem('doit_current_user');
+      setCurrentUser(user);
+      loadLocalData(user);
       return;
     }
 
-    // Mock Database using LocalStorage
-    const users = JSON.parse(localStorage.getItem('doit_users') || '{}');
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setCurrentUser(session?.user?.email || null);
+    });
 
-    if (authMode === 'SIGN_UP') {
-      if (users[email]) {
-        setAuthError('User already exists. Please sign in.');
-        return;
-      }
-      // Register User
-      users[email] = { password }; // In a real app, hash this!
-      localStorage.setItem('doit_users', JSON.stringify(users));
-      
-      setCurrentUser(email);
-      setIsAuthModalOpen(false);
-      resetAuthForm();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setCurrentUser(session?.user?.email || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // --- Data Loading ---
+  useEffect(() => {
+    if (currentUser && supabase) {
+      loadSupabaseData();
+    } else if (!supabase) {
+      loadLocalData(currentUser);
     } else {
-      // Sign In
-      const user = users[email];
-      if (!user || user.password !== password) {
-        setAuthError('Invalid email or password.');
-        return;
+      // Supabase is active but no user -> Clear data or show defaults
+      setHabits([]);
+      setMonthlyHabits([]);
+      setCategories([]);
+      setTasks([]);
+    }
+  }, [currentUser]);
+
+  const loadLocalData = (user: string | null) => {
+    const getStorageKey = (key: string) => user ? `${key}_${user}` : key;
+    try {
+      const h = localStorage.getItem(getStorageKey('doit_habits'));
+      setHabits(h ? JSON.parse(h) : getDefaultHabits());
+
+      const mh = localStorage.getItem(getStorageKey('doit_monthly_habits'));
+      setMonthlyHabits(mh ? JSON.parse(mh) : getDefaultMonthlyHabits());
+
+      const c = localStorage.getItem(getStorageKey('doit_categories'));
+      setCategories(c ? JSON.parse(c) : getDefaultCategories());
+
+      const t = localStorage.getItem(getStorageKey('doit_tasks'));
+      setTasks(t ? JSON.parse(t) : getDefaultTasks());
+    } catch (e) {
+      console.error("Failed to load local data", e);
+    }
+  };
+
+  const loadSupabaseData = async () => {
+    if (!supabase || !session?.user) return;
+    setIsLoading(true);
+    try {
+      // Fetch Habits
+      const { data: habitsData } = await supabase.from('habits').select('*');
+      if (habitsData) {
+        setHabits(habitsData.filter((h: any) => h.type === 'DAILY'));
+        setMonthlyHabits(habitsData.filter((h: any) => h.type === 'MONTHLY'));
       }
-      setCurrentUser(email);
+
+      // Fetch Categories
+      const { data: catData } = await supabase.from('categories').select('*');
+      if (catData && catData.length > 0) {
+        setCategories(catData.map((c: any) => c.name));
+      } else {
+        setCategories(getDefaultCategories()); // Fallback default
+      }
+
+      // Fetch Tasks
+      const { data: taskData } = await supabase.from('tasks').select('*');
+      if (taskData) {
+        setTasks(taskData.map((t: any) => ({
+           id: t.id,
+           title: t.title,
+           column: t.category,
+           completed: t.completed,
+           priority: t.priority,
+           createdAt: new Date(t.created_at).getTime()
+        })).sort((a: Task, b: Task) => a.createdAt - b.createdAt));
+      }
+
+    } catch (e) {
+      console.error("Supabase load error:", e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // --- Actions ---
+
+  const handleAuth = async () => {
+    if (!supabase) {
+      // Fallback local auth
+      setAuthError('');
+      if (!emailInput || !passwordInput) {
+         setAuthError('Email and password required');
+         return;
+      }
+      localStorage.setItem('doit_current_user', emailInput);
+      setCurrentUser(emailInput);
       setIsAuthModalOpen(false);
       resetAuthForm();
+      return;
     }
+
+    setAuthError('');
+    if (authMode === 'SIGN_UP') {
+      const { error } = await supabase.auth.signUp({
+        email: emailInput,
+        password: passwordInput,
+      });
+      if (error) setAuthError(error.message);
+      else {
+        setAuthError('Check your email for confirmation link.');
+      }
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: emailInput,
+        password: passwordInput,
+      });
+      if (error) setAuthError(error.message);
+      else {
+        setIsAuthModalOpen(false);
+        resetAuthForm();
+      }
+    }
+  };
+
+  const handleSignOut = async () => {
+    if (supabase) {
+      await supabase.auth.signOut();
+    } else {
+      localStorage.removeItem('doit_current_user');
+      setCurrentUser(null);
+    }
+    setIsAuthModalOpen(false);
   };
 
   const resetAuthForm = () => {
@@ -147,36 +203,199 @@ export default function App() {
     setAuthMode('SIGN_IN');
   };
 
-  const handleSignOut = () => {
-    setCurrentUser(null);
-    setIsAuthModalOpen(false);
-    resetAuthForm();
-  };
+  // --- Data Handlers ---
 
-  const addCategory = (name: string) => {
-    if (name && !categories.includes(name)) {
-      setCategories(prev => [...prev, name]);
+  // HABITS
+  const onAddHabit = async (title: string, type: ProtocolType) => {
+    const newHabit: Habit = { id: crypto.randomUUID(), title, completions: {}, type };
+    // Optimistic
+    if (type === 'DAILY') setHabits(prev => [...prev, newHabit]);
+    else setMonthlyHabits(prev => [...prev, newHabit]);
+
+    if (supabase && session?.user) {
+        await supabase.from('habits').insert({
+            id: newHabit.id,
+            user_id: session.user.id,
+            title: newHabit.title,
+            type: type,
+            completions: {}
+        });
+    } else if (!supabase && currentUser) {
+        // Persist Local
+        saveLocalHabit(newHabit, type);
     }
   };
 
-  const updateCategory = (oldName: string, newName: string) => {
-    const trimmed = newName.trim();
-    if (!trimmed) return;
-    if (categories.includes(trimmed) && trimmed !== oldName) {
-      alert(`Sector "${trimmed}" already exists.`);
-      return;
+  const onToggleHabit = async (id: string, date: Date, type: ProtocolType) => {
+    const dateKey = type === 'DAILY' ? format(date, 'yyyy-MM-dd') : format(date, 'yyyy-MM');
+    let updatedHabit: Habit | undefined;
+
+    const updater = (prev: Habit[]) => prev.map(h => {
+        if (h.id === id) {
+            const newCompletions = { ...h.completions };
+            if (newCompletions[dateKey]) delete newCompletions[dateKey];
+            else newCompletions[dateKey] = true;
+            updatedHabit = { ...h, completions: newCompletions };
+            return updatedHabit;
+        }
+        return h;
+    });
+
+    if (type === 'DAILY') setHabits(updater);
+    else setMonthlyHabits(updater);
+
+    if (supabase && session?.user && updatedHabit) {
+        await supabase.from('habits').update({ completions: updatedHabit.completions }).eq('id', id);
+    } else if (!supabase && currentUser && updatedHabit) {
+        // Handled by generic local saver or need explicit?
+        // With local storage fallback, we usually just save the whole array.
+        // For brevity in fallback mode, we'll let a separate simple effect handle saving ONLY if !supabase
     }
+  };
+
+  const onDeleteHabit = async (id: string, type: ProtocolType) => {
+    if (type === 'DAILY') setHabits(prev => prev.filter(h => h.id !== id));
+    else setMonthlyHabits(prev => prev.filter(h => h.id !== id));
+
+    if (supabase && session?.user) {
+        await supabase.from('habits').delete().eq('id', id);
+    }
+  };
+
+  // TASKS
+  const onAddTask = async (title: string, priority: TaskPriority, category: string) => {
+    const newTask: Task = {
+        id: crypto.randomUUID(),
+        title,
+        column: category,
+        priority,
+        completed: false,
+        createdAt: Date.now()
+    };
+    setTasks(prev => [...prev, newTask]);
+
+    if (supabase && session?.user) {
+        await supabase.from('tasks').insert({
+            id: newTask.id,
+            user_id: session.user.id,
+            title: newTask.title,
+            category: newTask.column,
+            priority: newTask.priority,
+            completed: false,
+            created_at: new Date(newTask.createdAt).toISOString()
+        });
+    }
+  };
+
+  const onUpdateTask = async (id: string, updates: Partial<Task>) => {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
     
+    if (supabase && session?.user) {
+        // Map updates to DB columns
+        const dbUpdates: any = {};
+        if (updates.title) dbUpdates.title = updates.title;
+        if (updates.completed !== undefined) dbUpdates.completed = updates.completed;
+        if (updates.priority) dbUpdates.priority = updates.priority;
+        if (updates.column) dbUpdates.category = updates.column;
+        
+        await supabase.from('tasks').update(dbUpdates).eq('id', id);
+    }
+  };
+
+  const onDeleteTask = async (id: string) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
+    if (supabase && session?.user) {
+        await supabase.from('tasks').delete().eq('id', id);
+    }
+  };
+
+  const onToggleTask = async (id: string) => {
+    const task = tasks.find(t => t.id === id);
+    if (task) {
+        const newCompleted = !task.completed;
+        setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: newCompleted } : t));
+        if (supabase && session?.user) {
+            await supabase.from('tasks').update({ completed: newCompleted }).eq('id', id);
+        }
+    }
+  };
+  
+  const onMoveTask = async (taskId: string, newCategory: string, newIndex: number) => {
+      // For local state, we need to handle the reorder if using arrayMove
+      // However, since we filter by category in TaskBoard, standard arrayMove might be tricky across categories
+      // But here we receive the category change.
+      
+      const oldTask = tasks.find(t => t.id === taskId);
+      if (!oldTask) return;
+
+      const isSameCategory = oldTask.column === newCategory;
+      
+      setTasks((prevTasks) => {
+          if (isSameCategory) {
+              const oldIndex = prevTasks.findIndex(t => t.id === taskId);
+              return arrayMove(prevTasks, oldIndex, newIndex);
+          } else {
+              return prevTasks.map(t => t.id === taskId ? { ...t, column: newCategory } : t);
+          }
+      });
+
+      if (!isSameCategory && supabase && session?.user) {
+          await supabase.from('tasks').update({ category: newCategory }).eq('id', taskId);
+      }
+      // Note: Reordering within same category is not persisted to DB in this version
+  };
+
+  // CATEGORIES
+  const onAddCategory = async (name: string) => {
+    if (categories.includes(name)) return;
+    setCategories(prev => [...prev, name]);
+
+    if (supabase && session?.user) {
+        await supabase.from('categories').insert({ user_id: session.user.id, name });
+    }
+  };
+
+  const onUpdateCategory = async (oldName: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed || categories.includes(trimmed)) return;
+
     setCategories(prev => prev.map(c => c === oldName ? trimmed : c));
     setTasks(prev => prev.map(t => t.column === oldName ? { ...t, column: trimmed } : t));
+
+    if (supabase && session?.user) {
+        await supabase.from('categories').update({ name: trimmed }).eq('name', oldName);
+        // Supabase foreign keys might handle task updates if configured, otherwise we update tasks
+        await supabase.from('tasks').update({ category: trimmed }).eq('category', oldName);
+    }
   };
 
-  const deleteCategory = (name: string) => {
+  const onDeleteCategory = async (name: string) => {
     setCategories(prev => prev.filter(c => c !== name));
     setTasks(prev => prev.filter(t => t.column !== name));
+
+    if (supabase && session?.user) {
+        await supabase.from('categories').delete().eq('name', name);
+        // Tasks cascade delete ideally, or we manual delete
+        await supabase.from('tasks').delete().eq('category', name);
+    }
   };
 
-  // Helper for user initials
+  // --- Legacy Local Storage Saver (Fallback only) ---
+  const saveLocalHabit = (habit: Habit, type: ProtocolType) => {
+      // This is complex to do purely functionally without effect. 
+      // We rely on the generic Effect below for non-supabase mode.
+  };
+
+  useEffect(() => {
+    if (!supabase && currentUser) {
+       const key = currentUser ? `_${currentUser}` : '';
+       localStorage.setItem(`doit_habits${key}`, JSON.stringify(habits));
+       localStorage.setItem(`doit_monthly_habits${key}`, JSON.stringify(monthlyHabits));
+       localStorage.setItem(`doit_categories${key}`, JSON.stringify(categories));
+       localStorage.setItem(`doit_tasks${key}`, JSON.stringify(tasks));
+    }
+  }, [habits, monthlyHabits, categories, tasks, currentUser]);
+  
   const getUserInitials = (name: string) => name.substring(0, 2).toUpperCase();
 
   return (
@@ -189,7 +408,7 @@ export default function App() {
         <div className="flex md:flex-col items-center gap-4 md:gap-6 md:mb-8">
              {/* Logo & User Container - Row on Mobile, Stack on Desktop */}
             <div className="flex items-center md:flex-col-reverse gap-4">
-                 {/* User Icon - Left of Logo (or below/above depending on vertical stacking preference) */}
+                 {/* User Icon */}
                 <button 
                     onClick={() => {
                         setIsAuthModalOpen(true);
@@ -272,18 +491,23 @@ export default function App() {
               {mode === AppMode.PROTOCOL ? (
                 <DailyTracker 
                   dailyHabits={habits} 
-                  setDailyHabits={setHabits} 
                   monthlyHabits={monthlyHabits}
-                  setMonthlyHabits={setMonthlyHabits}
+                  onAddHabit={onAddHabit}
+                  onToggleHabit={onToggleHabit}
+                  onDeleteHabit={onDeleteHabit}
                 />
               ) : (
                 <TaskBoard 
                   tasks={tasks} 
-                  setTasks={setTasks}
                   categories={categories}
-                  onAddCategory={addCategory}
-                  onUpdateCategory={updateCategory}
-                  onDeleteCategory={deleteCategory}
+                  onAddTask={onAddTask}
+                  onUpdateTask={onUpdateTask}
+                  onDeleteTask={onDeleteTask}
+                  onToggleTask={onToggleTask}
+                  onMoveTask={onMoveTask}
+                  onAddCategory={onAddCategory}
+                  onUpdateCategory={onUpdateCategory}
+                  onDeleteCategory={onDeleteCategory}
                 />
               )}
             </div>
@@ -309,6 +533,7 @@ export default function App() {
                         <div className="overflow-hidden">
                             <p className="text-xs text-slate-500 font-mono uppercase">Current User</p>
                             <p className="text-sm md:text-lg font-bold text-white truncate" title={currentUser}>{currentUser}</p>
+                            {!supabase && <p className="text-[10px] text-amber-500 mt-1">OFFLINE MODE (LOCAL STORAGE)</p>}
                         </div>
                     </div>
                     <Button onClick={handleSignOut} variant="danger" className="w-full flex items-center justify-center gap-2">

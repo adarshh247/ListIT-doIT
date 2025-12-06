@@ -58,7 +58,7 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
   }
 );
 
-export const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }) => {
+export const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children?: React.ReactNode }) => {
   if (!isOpen) return null;
 
   return (
