@@ -228,28 +228,35 @@ export default function App() {
 
   const onToggleHabit = async (id: string, date: Date, type: ProtocolType) => {
     const dateKey = type === 'DAILY' ? format(date, 'yyyy-MM-dd') : format(date, 'yyyy-MM');
-    let updatedHabit: Habit | undefined;
+    
+    // Find the current habit from state to calculate new state correctly
+    const currentList = type === 'DAILY' ? habits : monthlyHabits;
+    const habit = currentList.find(h => h.id === id);
+    
+    if (!habit) return;
 
-    const updater = (prev: Habit[]) => prev.map(h => {
-        if (h.id === id) {
-            const newCompletions = { ...h.completions };
-            if (newCompletions[dateKey]) delete newCompletions[dateKey];
-            else newCompletions[dateKey] = true;
-            updatedHabit = { ...h, completions: newCompletions };
-            return updatedHabit;
-        }
-        return h;
-    });
+    // Create updated completions map
+    const newCompletions = { ...habit.completions };
+    if (newCompletions[dateKey]) {
+        delete newCompletions[dateKey];
+    } else {
+        newCompletions[dateKey] = true;
+    }
+
+    // Optimistic UI Update
+    const updater = (prev: Habit[]) => prev.map(h => 
+        h.id === id ? { ...h, completions: newCompletions } : h
+    );
 
     if (type === 'DAILY') setHabits(updater);
     else setMonthlyHabits(updater);
 
-    if (supabase && session?.user && updatedHabit) {
-        await supabase.from('habits').update({ completions: updatedHabit.completions }).eq('id', id);
-    } else if (!supabase && currentUser && updatedHabit) {
-        // Handled by generic local saver or need explicit?
-        // With local storage fallback, we usually just save the whole array.
-        // For brevity in fallback mode, we'll let a separate simple effect handle saving ONLY if !supabase
+    // Database Update
+    if (supabase && session?.user) {
+        await supabase
+            .from('habits')
+            .update({ completions: newCompletions })
+            .eq('id', id);
     }
   };
 
